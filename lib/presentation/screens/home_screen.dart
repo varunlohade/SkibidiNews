@@ -4,8 +4,10 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:shimmer/shimmer.dart';
 import '../../domain/models/content_tag.dart';
+import '../../domain/models/podcast.dart';
 import '../bloc/audio/audio_bloc.dart';
 import '../bloc/podcast/podcast_bloc.dart';
+import 'podcast_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final List<ContentTag> selectedTags;
@@ -19,9 +21,10 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  List<Map<String, dynamic>> _recentPodcasts = [];
+  List<Podcast> _recentPodcasts = [];
 
   @override
   void initState() {
@@ -107,24 +110,25 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               listener: (context, state) {
                 if (state is PodcastGenerated) {
                   context.read<AudioBloc>().add(
-                    PlayAudio(
-                      'file://${state.audioPath}',
-                      title: 'Podcast: ${state.topic}',
+                        PlayAudio(
+                          state.podcast.audioSource,
+                          title: state.podcast.title,
+                        ),
+                      );
+
+                  setState(() {
+                    _recentPodcasts.insert(0, state.podcast);
+                  });
+
+                  // Navigate to podcast detail screen
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => PodcastDetailScreen(
+                        podcast: state.podcast,
+                      ),
                     ),
                   );
-                  
-                  // Add the new podcast to the list
-                  setState(() {
-                    _recentPodcasts.insert(0, {
-                      'title': state.topic,
-                      'audioPath': state.audioPath,
-                      'content': state.content,
-                      'duration': '2:00',
-                      'tags': ['AI Generated', 'News'],
-                      'listens': '0',
-                      'isPopular': false,
-                    });
-                  });
                 } else if (state is PodcastError) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text(state.message)),
@@ -160,9 +164,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               spacing: 8.w,
               runSpacing: 8.h,
               children: [
+                _buildTopicChip('Iran vs US Wars'),
                 _buildTopicChip('AI & Blockchain'),
                 _buildTopicChip('Future of Tech'),
-                _buildTopicChip('Web3 Updates'),
                 _buildTopicChip('Crypto News'),
               ],
             ),
@@ -229,17 +233,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             _recentPodcasts.length,
             (index) {
               final podcast = _recentPodcasts[index];
-              return Column(
-                children: [
-                  _buildNewsCard(
-                    title: podcast['title'],
-                    duration: podcast['duration'],
-                    tags: List<String>.from(podcast['tags']),
-                    listens: podcast['listens'],
-                    isPopular: podcast['isPopular'],
-                  ),
-                  SizedBox(height: 16.h),
-                ],
+              return Padding(
+                padding: EdgeInsets.only(bottom: 16.h),
+                child: _buildPodcastCard(podcast),
               );
             },
           ),
@@ -259,30 +255,19 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
         ),
         SizedBox(height: 16.h),
-        _buildNewsCard(
-          title: 'Entertainment Industry Shakeup: Major Merger Announced',
-          duration: '4:15',
-          tags: ['Entertainment', 'Business'],
-          listens: '5.1K',
-          isPopular: true,
-        ),
+        if (_recentPodcasts.isNotEmpty)
+          _buildPodcastCard(_recentPodcasts.first.copyWith(isPopular: true)),
       ],
     );
   }
 
-  Widget _buildNewsCard({
-    required String title,
-    required String duration,
-    required List<String> tags,
-    required String listens,
-    bool isPopular = false,
-  }) {
+  Widget _buildPodcastCard(Podcast podcast) {
     return GestureDetector(
       onTap: () {
-        context.read<AudioBloc>().add(
-          PlayAudio(
-            'file:///path/to/audio.mp3',
-            title: title,
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PodcastDetailScreen(podcast: podcast),
           ),
         );
       },
@@ -297,9 +282,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           children: [
             Row(
               children: [
-                if (isPopular) 
+                if (podcast.isPopular)
                   Container(
-                    padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+                    padding:
+                        EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
                     decoration: BoxDecoration(
                       color: Colors.black,
                       borderRadius: BorderRadius.circular(12.r),
@@ -314,7 +300,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   ),
                 const Spacer(),
                 Text(
-                  '👂 $listens',
+                  '👂 ${podcast.listens}',
                   style: TextStyle(
                     color: Colors.grey[600],
                     fontSize: 12.sp,
@@ -324,7 +310,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             ),
             SizedBox(height: 8.h),
             Text(
-              title,
+              podcast.title,
               style: TextStyle(
                 fontSize: 16.sp,
                 fontWeight: FontWeight.bold,
@@ -334,25 +320,25 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             Row(
               children: [
                 Text(
-                  '🎧 $duration',
+                  '🎧 ${podcast.duration.inMinutes}:${(podcast.duration.inSeconds % 60).toString().padLeft(2, '0')}',
                   style: TextStyle(
                     color: Colors.grey[600],
                     fontSize: 12.sp,
                   ),
                 ),
                 SizedBox(width: 8.w),
-                ...tags.map((tag) => Padding(
-                  padding: EdgeInsets.only(right: 4.w),
-                  child: Chip(
-                    label: Text(tag),
-                    padding: EdgeInsets.zero,
-                    labelStyle: TextStyle(fontSize: 10.sp),
-                  ),
-                )),
+                ...podcast.tags.map((tag) => Padding(
+                      padding: EdgeInsets.only(right: 4.w),
+                      child: Chip(
+                        label: Text(tag),
+                        padding: EdgeInsets.zero,
+                        labelStyle: TextStyle(fontSize: 10.sp),
+                      ),
+                    )),
                 const Spacer(),
                 BlocBuilder<AudioBloc, AudioState>(
                   builder: (context, state) {
-                    if (state is AudioPlaying && state.title == title) {
+                    if (state is AudioPlaying && state.title == podcast.title) {
                       return IconButton(
                         icon: const Icon(Icons.pause_circle_filled),
                         onPressed: () {
@@ -364,11 +350,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       icon: const Icon(Icons.play_circle_filled),
                       onPressed: () {
                         context.read<AudioBloc>().add(
-                          PlayAudio(
-                            'file:///path/to/audio.mp3',
-                            title: title,
-                          ),
-                        );
+                              PlayAudio(
+                                podcast.audioSource,
+                                title: podcast.title,
+                              ),
+                            );
                       },
                     );
                   },
@@ -385,7 +371,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return BlocBuilder<AudioBloc, AudioState>(
       builder: (context, state) {
         if (state is! AudioPlaying) return const SizedBox.shrink();
-        
+
         return Container(
           height: 64.h,
           padding: EdgeInsets.symmetric(horizontal: 16.w),
